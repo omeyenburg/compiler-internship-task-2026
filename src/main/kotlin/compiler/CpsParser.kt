@@ -84,12 +84,16 @@ class CpsParser {
                                 blockStack.remove(blockStack.last())
                             }
 
-                            val block1 = parseBlock(ifStatement.block(1))
-                            while (blockStack.size > stackSize) {
-                                blockStack.remove(blockStack.last())
-                            }
+                            if (ifStatement.ELSE() == null) {
+                                Statement.IfStatement(ifStatement.expression(), block0, emptyList())
+                            } else {
+                                val block1 = parseBlock(ifStatement.block(1))
+                                while (blockStack.size > stackSize) {
+                                    blockStack.remove(blockStack.last())
+                                }
 
-                            Statement.IfStatement(ifStatement.expression(), block0, block1)
+                                Statement.IfStatement(ifStatement.expression(), block0, block1)
+                            }
                         }
                         statement.whileStatement() != null -> {
                             val whileStatement = statement.whileStatement()
