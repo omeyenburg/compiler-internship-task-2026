@@ -94,7 +94,7 @@ class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
     }
 
     private fun compileNotExpr(expr: MiniKotlinParser.NotExprContext): String {
-        return "!" + expr.expression()
+        return "!" + compileExpression(expr.expression())
     }
 
     private fun compileAddSubExpr(expr: MiniKotlinParser.AddSubExprContext): String {
