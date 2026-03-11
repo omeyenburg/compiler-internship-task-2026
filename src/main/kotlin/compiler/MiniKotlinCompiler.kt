@@ -171,20 +171,18 @@ class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
         val args = compileArgs(statement.args)
         val block = compileBlock(statement.statements)
 
-        return """
-            $name($args, ($arg) -> {
-                $block
-            });
-        """.trimIndent()
+        if (block.trim().equals("")) {
+            return "$name($args, ($arg) -> {});"
+        }
+
+        return "$name($args, ($arg) -> {\n$block});"
     }
 
     private fun compileBlock(statements: List<Statement>): String {
         var output = ""
 
         for (statement in statements) {
-            if (!output.equals("")) output += "\n"
-
-            output +=
+            val statementString =
                     when (statement) {
                         is Statement.VariableDeclaration -> compileVariableDeclaration(statement)
                         is Statement.IfStatement -> compileIfStatement(statement)
@@ -194,9 +192,12 @@ class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
                         is Statement.Expression -> compileExpressionStatement(statement)
                         is Statement.CpsFunctionCall -> compileCpsFunctionCall(statement)
                     }
+
+            if (!output.equals("") && !statementString.equals("")) output += "\n"
+            output += statementString
         }
 
-        return output.prependIndent("    ") + "\n"
+        return output.prependIndent("  ") + "\n"
     }
 
     private fun compileFunctionDeclaration(funcName: String): String {
@@ -211,7 +212,7 @@ class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
 
         val block = compileBlock(func.statements)
 
-        return "public static void $funcName($params) {\n$block}"
+        return "public static void $funcName($params) {\n$block}".prependIndent("  ") + "\n"
     }
 
     fun compile(
@@ -227,14 +228,6 @@ class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
         }
 
         output += "}"
-
-        // return """
-        //     public class $className {
-        //         public static void main(String[] args) {
-        //           return;
-        //         }
-        //     }
-        // """.trimIndent()
 
         return output
     }
