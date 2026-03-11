@@ -4,107 +4,211 @@ import MiniKotlinBaseVisitor
 import MiniKotlinParser
 
 class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
+    private var temporaryVarDeclIndex = 0
+    private var temporaryVarUsageIndex = 0
+    private var temporaryVarName = "arg"
+    private var continuationVarName = "__continuation"
+    private val parser = CpsParser()
 
-    private fun parse_type(type: MiniKotlinParser.TypeContext): String {
-        return when (type.text) {
-            "Int" -> "Integer"
-            "String" -> "String"
-            "Boolean" -> "Boolean"
-            "Unit" -> "void"
-            else -> throw Exception("Syntax error: invalid type \"${type.text}\"")
-        }
-    }
-
-    private fun parse_function_params(params: MiniKotlinParser.ParameterListContext?): String {
+    private fun compileFunctionParams(params: MiniKotlinParser.ParameterListContext?): String {
         if (params == null) return "Continuation<Integer> __continuation"
 
-        var param_string = ""
+        var paramString = ""
 
         for (param in params.parameter()) {
-            val param_type = parse_type(param.type())
-            val param_name = param.IDENTIFIER()
-            param_string += "$param_type $param_name, "
+            val paramType = parseType(param.type())
+            val paramName = param.IDENTIFIER()
+            paramString += "$paramType $paramName, "
         }
 
-        param_string += "Continuation<Integer> __continuation" // TODO: check usage
+        paramString += "Continuation<Integer> __continuation" // TODO: check usage
 
-        return param_string
+        return paramString
     }
 
-    private fun parse_expression(expr: MiniKotlinParser.ExpressionContext): String {
-        return "..."
+    // NOTE: probably should return expr in parentheses
+    private fun compileExpression(expr: MiniKotlinParser.ExpressionContext): String {
+        return when (expr) {
+            is MiniKotlinParser.AndExprContext -> compileAndExpr(expr)
+            is MiniKotlinParser.FunctionCallExprContext -> compileFunctionCallExpression(expr)
+            is MiniKotlinParser.MulDivExprContext -> compileMulDivExpr(expr)
+            is MiniKotlinParser.EqualityExprContext -> compileEqualityExpr(expr)
+            is MiniKotlinParser.ComparisonExprContext -> compileComparisonExpr(expr)
+            is MiniKotlinParser.PrimaryExprContext -> compilePrimaryExpr(expr)
+            is MiniKotlinParser.NotExprContext -> compileNotExpr(expr)
+            is MiniKotlinParser.AddSubExprContext -> compileAddSubExpr(expr)
+            is MiniKotlinParser.OrExprContext -> compileOrExpr(expr)
+            else -> throw Exception("invalid expression type")
+        }
     }
 
-    private fun parse_if_statement(expr: MiniKotlinParser.IfStatementContext): String {
-        return "..."
+    private fun compileAndExpr(expr: MiniKotlinParser.AndExprContext): String {
+        val left = compileExpression(expr.expression(0))
+        val right = compileExpression(expr.expression(1))
+        return "(" + left + "&&" + right + ")"
     }
 
-    private fun parse_while_statement(expr: MiniKotlinParser.WhileStatementContext): String {
-        return "..."
+    private fun compileFunctionCallExpression(
+            expr: MiniKotlinParser.FunctionCallExprContext
+    ): String {
+        return "arg" + (temporaryVarUsageIndex++).toString()
     }
 
-    private fun parse_variable_assigment(expr: MiniKotlinParser.VariableAssignmentContext): String {
-        return "..."
+    private fun compileMulDivExpr(expr: MiniKotlinParser.MulDivExprContext): String {
+        val left = compileExpression(expr.expression(0))
+        val right = compileExpression(expr.expression(1))
+        val op = expr.MULT()?.text ?: expr.DIV()?.text ?: expr.MOD()?.text
+        return "(" + left + op + right + ")"
     }
 
-    private fun parse_return_statement(expr: MiniKotlinParser.ReturnStatementContext): String {
-        return "..."
+    private fun compileEqualityExpr(expr: MiniKotlinParser.EqualityExprContext): String {
+        val left = compileExpression(expr.expression(0))
+        val right = compileExpression(expr.expression(1))
+        val op = expr.EQ()?.text ?: expr.NEQ()?.text
+        return "(" + left + op + right + ")"
     }
 
-    private fun parse_variable_declaration(decl: MiniKotlinParser.VariableDeclarationContext): String {
-        val type = parse_type(decl.type())
-        val name = decl.IDENTIFIER()
-        val expr = parse_expression(decl.expression())
-        return "$type $name = $expr"
+    private fun compileComparisonExpr(expr: MiniKotlinParser.ComparisonExprContext): String {
+        val left = compileExpression(expr.expression(0))
+        val right = compileExpression(expr.expression(1))
+        val op = expr.LT()?.text ?: expr.GT()?.text ?: expr.LE()?.text ?: expr.GE()?.text
+        return "(" + left + op + right + ")"
     }
 
-    private fun parse_block(block: MiniKotlinParser.BlockContext): String {
+    private fun compilePrimaryExpr(expr: MiniKotlinParser.PrimaryExprContext): String {
+        return expr.text
+    }
+
+    private fun compileNotExpr(expr: MiniKotlinParser.NotExprContext): String {
+        return "!" + expr.expression()
+    }
+
+    private fun compileAddSubExpr(expr: MiniKotlinParser.AddSubExprContext): String {
+        val left = compileExpression(expr.expression(0))
+        val right = compileExpression(expr.expression(1))
+        val op = expr.PLUS()?.text ?: expr.MINUS()?.text
+        return "(" + left + op + right + ")"
+    }
+
+    private fun compileOrExpr(expr: MiniKotlinParser.OrExprContext): String {
+        val left = compileExpression(expr.expression(0))
+        val right = compileExpression(expr.expression(1))
+        return "(" + left + "||" + right + ")"
+    }
+
+    private fun compileIfStatement(statement: Statement.IfStatement): String {
+        val expr = compileExpression(statement.expr)
+        val ifBlock = compileBlock(statement.statements1)
+
+        if (statement.statements2.isEmpty()) {
+            return "if ($expr) {\n$ifBlock}"
+        }
+
+        val elseBlock = compileBlock(statement.statements2)
+        return "if ($expr) {\n$ifBlock} else {\n$elseBlock}"
+    }
+
+    private fun compileWhileStatement(statement: Statement.WhileStatement): String {
+        val expr = compileExpression(statement.expr)
+        val block = compileBlock(statement.statements)
+        return "while ($expr) {\n$block}"
+    }
+
+    private fun CompileVariableAssigment(statement: Statement.VariableAssignment): String {
+        val name = statement.name
+        val expr = compileExpression(statement.expr)
+        return "$name = $expr;"
+    }
+
+    private fun compileReturnStatement(statement: Statement.ReturnStatement): String {
+        val expr = compileExpression(statement.expr)
+        return """
+            __continuation.accept($expr);
+            return;
+        """.trimIndent()
+    }
+
+    private fun compileVariableDeclaration(decl: Statement.VariableDeclaration): String {
+        val type = decl.type
+        val name = decl.name
+        val expr = compileExpression(decl.expr)
+        return "$type $name = $expr;"
+    }
+
+    private fun compileArgs(args: List<MiniKotlinParser.ExpressionContext>): String {
+        return args.map { compileExpression(it) }.joinToString(", ")
+    }
+
+    private fun compileExpressionStatement(statement: Statement.Expression): String {
+        compileExpression(statement.expr) // parse to process potential function calls
+        return "" // return nothing, would be an invalid expression
+    }
+
+    private fun compileCpsFunctionCall(statement: Statement.CpsFunctionCall): String {
+        val name: String
+        if (statement.name.equals("println")) {
+            name = "Prelude.println"
+        } else {
+            name = statement.name
+        }
+
+        val arg = "arg" + (temporaryVarDeclIndex++).toString()
+        val args = compileArgs(statement.args)
+        val block = compileBlock(statement.statements)
+
+        return """
+            $name($args, ($arg) -> {
+                $block
+            });
+        """.trimIndent()
+    }
+
+    private fun compileBlock(statements: List<Statement>): String {
         var output = ""
 
-        for (statement in block.statement()) {
-            output += if (statement.variableDeclaration() != null) {
-                parse_variable_declaration(statement.variableDeclaration())
-            } else if (statement.ifStatement() != null) {
-                parse_if_statement(statement.ifStatement())
-            } else if (statement.whileStatement() != null) {
-                parse_while_statement(statement.whileStatement())
-            } else if (statement.variableAssignment() != null) {
-                parse_variable_assigment(statement.variableAssignment())
-            } else if (statement.returnStatement() != null) {
-                parse_return_statement(statement.returnStatement())
-            } else if (statement.expression() != null) {
-                parse_expression(statement.expression())
-            } else {
-                throw Exception("Syntax error: invalid statement \"${statement.text}\"")
-            }
+        for (statement in statements) {
+            if (!output.equals("")) output += "\n"
 
-            output += "\n"
+            output +=
+                    when (statement) {
+                        is Statement.VariableDeclaration -> compileVariableDeclaration(statement)
+                        is Statement.IfStatement -> compileIfStatement(statement)
+                        is Statement.WhileStatement -> compileWhileStatement(statement)
+                        is Statement.VariableAssignment -> CompileVariableAssigment(statement)
+                        is Statement.ReturnStatement -> compileReturnStatement(statement)
+                        is Statement.Expression -> compileExpressionStatement(statement)
+                        is Statement.CpsFunctionCall -> compileCpsFunctionCall(statement)
+                    }
         }
 
-        return output
+        return output.prependIndent("    ") + "\n"
     }
 
-    private fun compile_function_def(func: MiniKotlinParser.FunctionDeclarationContext): String {
-        val name = func.IDENTIFIER()
-        val type = parse_type(func.type())
+    private fun compileFunctionDeclaration(funcName: String): String {
+        val func = parser.functions[funcName] ?: return ""
 
         val params: String
-        if (name.equals("main")) {
+        if (funcName.equals("main")) {
             params = "String[] args"
         } else {
-            params = parse_function_params(func.parameterList())
+            params = compileFunctionParams(func.params)
         }
 
-        val block = parse_block(func.block())
+        val block = compileBlock(func.statements)
 
-        return "public static $type $name($params) {\n$block}"
+        return "public static void $funcName($params) {\n$block}"
     }
 
-    fun compile(program: MiniKotlinParser.ProgramContext, className: String = "MiniProgram"): String {
+    fun compile(
+            program: MiniKotlinParser.ProgramContext,
+            className: String = "MiniProgram"
+    ): String {
+        parser.parseProgram(program)
+
         var output = "public class $className {\n"
 
-        for (func in program.functionDeclaration()) {
-            output += compile_function_def(func).prependIndent("    ") + "\n"
+        for (funcName in parser.functions.keys) {
+            output += compileFunctionDeclaration(funcName)
         }
 
         output += "}"
