@@ -4,14 +4,31 @@ import MiniKotlinBaseVisitor
 import MiniKotlinParser
 
 class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
+    private var temporaryVars: MutableList<String> = mutableListOf()
     private var temporaryVarDeclIndex = 0
     private var temporaryVarUsageIndex = 0
     private var temporaryVarName = "arg"
     private var continuationVarName = "__continuation"
     private val parser = CpsParser()
 
+    fun getNewContinuationArg(): String {
+        var arg = "arg" + temporaryVarDeclIndex++
+        while (arg in parser.symbols) {
+            arg = "arg" + temporaryVarDeclIndex++
+        }
+
+        temporaryVars.add(arg)
+        return arg
+    }
+
     private fun compileFunctionParams(params: MiniKotlinParser.ParameterListContext?): String {
-        if (params == null) return "Continuation<Integer> __continuation"
+        var continuationSymbol = "__continuation"
+        var counter = 0
+        while (continuationSymbol in parser.symbols) {
+            continuationSymbol = "__continuation" + counter++
+        }
+
+        if (params == null) return "Continuation<Integer> $continuationSymbol"
 
         var paramString = ""
 
@@ -21,7 +38,7 @@ class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
             paramString += "$paramType $paramName, "
         }
 
-        paramString += "Continuation<Integer> __continuation" // TODO: check usage
+        paramString += "Continuation<Integer> $continuationSymbol"
 
         return paramString
     }
@@ -30,7 +47,7 @@ class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
     private fun compileExpression(expr: MiniKotlinParser.ExpressionContext): String {
         return when (expr) {
             is MiniKotlinParser.AndExprContext -> compileAndExpr(expr)
-            is MiniKotlinParser.FunctionCallExprContext -> compileFunctionCallExpression(expr)
+            is MiniKotlinParser.FunctionCallExprContext -> compileFunctionCallExpression()
             is MiniKotlinParser.MulDivExprContext -> compileMulDivExpr(expr)
             is MiniKotlinParser.EqualityExprContext -> compileEqualityExpr(expr)
             is MiniKotlinParser.ComparisonExprContext -> compileComparisonExpr(expr)
@@ -48,10 +65,8 @@ class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
         return "(" + left + "&&" + right + ")"
     }
 
-    private fun compileFunctionCallExpression(
-            expr: MiniKotlinParser.FunctionCallExprContext
-    ): String {
-        return "arg" + (temporaryVarUsageIndex++).toString()
+    private fun compileFunctionCallExpression(): String {
+        return temporaryVars[temporaryVarUsageIndex++]
     }
 
     private fun compileMulDivExpr(expr: MiniKotlinParser.MulDivExprContext): String {
@@ -152,7 +167,7 @@ class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
             name = statement.name
         }
 
-        val arg = "arg" + (temporaryVarDeclIndex++).toString()
+        val arg = getNewContinuationArg()
         val args = compileArgs(statement.args)
         val block = compileBlock(statement.statements)
 
