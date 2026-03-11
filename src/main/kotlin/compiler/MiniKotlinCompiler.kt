@@ -43,7 +43,6 @@ class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
         return paramString
     }
 
-    // NOTE: probably should return expr in parentheses
     private fun compileExpression(expr: MiniKotlinParser.ExpressionContext): String {
         return when (expr) {
             is MiniKotlinParser.AndExprContext -> compileAndExpr(expr)

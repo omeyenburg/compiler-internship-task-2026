@@ -94,9 +94,16 @@ class CpsParser {
                         statement.whileStatement() != null -> {
                             val whileStatement = statement.whileStatement()
                             parseExpression(whileStatement.expression())
+                            val stackSize = blockStack.size
+
+                            val block0 = parseBlock(whileStatement.block())
+                            while (blockStack.size > stackSize) {
+                                blockStack.remove(blockStack.last())
+                            }
+
                             Statement.WhileStatement(
                                     whileStatement.expression(),
-                                    parseBlock(whileStatement.block())
+                                    block0
                             )
                         }
                         statement.variableAssignment() != null -> {
