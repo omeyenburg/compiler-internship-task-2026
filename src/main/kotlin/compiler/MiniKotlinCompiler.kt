@@ -21,14 +21,14 @@ class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
         return arg
     }
 
-    private fun compileFunctionParams(params: MiniKotlinParser.ParameterListContext?): String {
+    private fun compileFunctionParams(type: String, params: MiniKotlinParser.ParameterListContext?): String {
         var continuationSymbol = "__continuation"
         var counter = 0
         while (continuationSymbol in parser.symbols) {
             continuationSymbol = "__continuation" + counter++
         }
 
-        if (params == null) return "Continuation<Integer> $continuationSymbol"
+        if (params == null) return "Continuation<$type> $continuationSymbol"
 
         var paramString = ""
 
@@ -38,7 +38,7 @@ class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
             paramString += "$paramType $paramName, "
         }
 
-        paramString += "Continuation<Integer> $continuationSymbol"
+        paramString += "Continuation<$type> $continuationSymbol"
 
         return paramString
     }
@@ -205,8 +205,10 @@ class MiniKotlinCompiler : MiniKotlinBaseVisitor<String>() {
         val params: String
         if (funcName.equals("main")) {
             params = "String[] args"
+        } else if (func.type == "void") {
+            params = compileFunctionParams("Void", func.params)
         } else {
-            params = compileFunctionParams(func.params)
+            params = compileFunctionParams(func.type, func.params)
         }
 
         val block = compileBlock(func.statements)
